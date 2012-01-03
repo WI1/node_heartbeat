@@ -1,0 +1,93 @@
+<?php
+/**
+ * @see heartbeat::heartbeat_messages_page
+ */
+function node_heartbeat_context($access_type, $offset_time = 0, $account = NULL) {
+	static $context = false;
+	
+	if($context === false) {
+	  $output = '';
+
+	  if ($offset_time == 0) {
+	    $offset_time = $_SERVER['REQUEST_TIME'];
+	  }
+
+	  // Messages have to loaded by ajax if the url contains an offset
+	  // variable AND a post variable ajax is defined.
+	  $ajax = !empty($_POST['ajax']);
+	  $page = empty($_POST['block']);
+
+	  // Normal page request with a offset time need a previous link
+	  if (!$ajax && $offset_time > 0 && $offset_time != $_SERVER['REQUEST_TIME']) {
+	    $output .= heartbeat_stream_prev_link($access_type);
+	  }
+
+	  // For block updates by ajax displayed on the user
+	  // profile page, we want to show the account requested.
+	  if (!$page && is_numeric($account) && $account > 0 && variable_get('heartbeat_show_user_profile_messages_'. $access_type, 0)) {
+	    $account = heartbeat_user_load($account);
+	  }
+
+	  // Message streams for each access type
+	  $context = heartbeat_stream_view($access_type, $page, $offset_time, $ajax, $account);
+
+	  if (!isset($context)) {
+	    return $ajax ? drupal_json(array('status' => TRUE, 'data' => t('No messages found.'))) : t('No messages found.');
+	  }
+	}
+	return $context;
+}
+
+/**
+ * caches messages
+ */
+function node_heartbeat_messages_page($context) {
+	static $messages = false;
+	if($messages === false) {
+		$messages = $context->execute();
+	}
+	return $messages;
+}
+
+/**
+ * caches access info
+ */
+function node_heartbeat_access($context) {
+	static $heartbeataccess = false;
+	if($access === false) {
+		$heartbeataccess = $context->getState();
+	}
+	return $heartbeataccess;
+}
+
+/**
+ * Inserts heartbeat content in node lists (e.g. views)
+ *
+ * @param array $vars
+ */
+function node_heartbeat_preprocess_node(&$vars, $hook) {
+	static $lastNodeTimestamp;
+
+	if(($vars['view']->name === 'frontpage') && empty($_GET['view_path'])) {
+	  global $user;
+	  // Get the messages
+		$context = node_heartbeat_context('publicheartbeat', 0, $user);
+		if(is_object($context)) {
+		  $messages = node_heartbeat_messages_page($context);
+			$heartbeataccess = node_heartbeat_access($context);
+		}
+
+		$beforeMessages = array();
+		foreach($messages as $key => $m) {
+			if(((int)$m->timestamp >= (int)$vars['node']->changed) && (((int)$m->timestamp < (int)$lastNodeTimestamp) || $lastNodeTimestamp === null)) {
+				$beforeMessages[$key] = $m;
+			} else {
+				break;
+			}
+		}
+		$lastNodeTimestamp = $vars['node']->changed;
+	  $output .= theme('heartbeat_messages', $beforeMessages, $heartbeataccess, '');
+		// insert heartbeat activity
+		$vars['before'] = $output;
+	}
+}

@@ -1,0 +1,6 @@
+; $Id$
+name = Node Heartbeat
+description = "Enriches node lists with heartbeat activities"
+core = 6.x
+package = Balance Meta
+dependencies[] = heartbeat
